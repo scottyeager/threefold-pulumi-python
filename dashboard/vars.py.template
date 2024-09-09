@@ -1,0 +1,15 @@
+MNEMONIC = "your words here ..."
+NETWORK = "main"
+
+# Node to deploy on and gateway to use
+NODEID = 8
+GATEWAY = 8
+# Subdomain to reserve on gateway
+GATEWAY_NAME = "dashboard"
+
+# Should be the default or a fork of tfgrid-sdk-ts with the same name
+REPO = "https://github.com/threefoldtech/tfgrid-sdk-ts"
+# Specify a branch or tag name to checkout, or leave blank for default branch
+REF = ""
+# Set which network the deployed dashboard will operate on
+MODE = "main"
