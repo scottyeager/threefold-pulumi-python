@@ -2,13 +2,20 @@ import os
 import sys
 import secrets
 import shutil
+import textwrap
 import pulumi
+import pulumi_random
 import pulumi_threefold as threefold
 
 import vars
 
 sys.path.append("..")  # Dirty hack, will fix soon of course ;)
 import util
+
+# If a node has IPv6, then it will be the first IP in the zdb IP list
+# Mycelium will always be last, but this could be index 1 or 2
+ZDB_IP6_INDEX = 0
+ZDB_MYC_INDEX = -1
 
 MNEMONIC = vars.MNEMONIC
 NETWORK = vars.NETWORK
@@ -26,20 +33,14 @@ NET_NAME = "net"
 META_NODES = vars.META_NODES
 DATA_NODES = vars.DATA_NODES
 DATA_SIZE = vars.DATA_SIZE
+META_SIZE = 1
 
 # Generate separate secrets for Zstor key and Zdb namespaces passwords
+# TODO: Don't overwrite these on every run
 ZSTOR_KEY = secrets.token_hex(32)
 ZDB_PW = secrets.token_urlsafe(32)
-
-encryption_config = f"""
-[encryption]
-algorithm = "AES"
-key = "{ZSTOR_KEY}"
-
-[meta.config.encryption]
-algorithm = "AES"
-key = "{ZSTOR_KEY}"
-"""
+zstor_key = pulumi_random.RandomBytes("zstor_key", length=32)
+zdb_pw = pulumi_random.RandomPassword("zdb_pw", length=20)
 
 provider = threefold.Provider("provider", mnemonic=MNEMONIC, network=NETWORK)
 
@@ -52,6 +53,7 @@ network = threefold.Network(
     mycelium=True,
     opts=pulumi.ResourceOptions(provider=provider),
 )
+
 nodes = set([VM_NODE] + META_NODES + DATA_NODES)
 
 deployments = {}
@@ -84,13 +86,19 @@ for node in nodes:
     if node in DATA_NODES:
         zdbs.append(
             threefold.ZDBInputArgs(
-                name="data" + str(node), size=DATA_SIZE, mode="seq", password=ZDB_PW
+                name="data" + str(node),
+                size=DATA_SIZE,
+                mode="seq",
+                password=zdb_pw.result,
             )
         )
     if node in META_NODES:
         zdbs.append(
             threefold.ZDBInputArgs(
-                name="meta" + str(node), size=1, mode="user", password=ZDB_PW
+                name="meta" + str(node),
+                size=META_SIZE,
+                mode="user",
+                password=zdb_pw.result,
             )
         )
 
@@ -107,11 +115,12 @@ for node in nodes:
 
 def post_deploy(args):
     # TODO: Don't overwrite existing file if it's there
+    # Actually, maybe it's okay as long as we have the secrets persisted
     shutil.copy("zstor_config.toml.base", "zstor_config.toml")
 
     meta_zdbs = []
     data_zdbs = []
-    for vm_list, zdb_list in args:
+    for vm_list, zdb_list in args["deployments"]:
         if vm_list:
             vm = vm_list[0]
 
@@ -124,23 +133,32 @@ def post_deploy(args):
     data_zdbs = sorted(data_zdbs, key=lambda z: z["namespace"].split("-")[-1])
 
     with open("zstor_config.toml", "a") as file:
-        file.write(encryption_config)
+        encryption_config = f"""
+        [encryption]
+        algorithm = "AES"
+        key = "{args['zstor_key']}"
+
+        [meta.config.encryption]
+        algorithm = "AES"
+        key = "{args['zstor_key']}"
+        """
+        file.write(textwrap.dedent(encryption_config))
         for zdb in meta_zdbs:
-            ip = zdb["ips"][1]
+            ip = zdb["ips"][ZDB_IP6_INDEX]
             ns = zdb["namespace"]
             file.write("[[meta.config.backends]]\n")
             file.write(f'address = "[{ip}]:9900"\n')
             file.write(f'namespace = "{ns}"\n')
-            file.write(f'password = "{ZDB_PW}"\n\n')
+            file.write(f'password = "{args['zdb_pw']}"\n\n')
 
         file.write("[[groups]]\n")
         for zdb in data_zdbs:
-            ip = zdb["ips"][1]
+            ip = zdb["ips"][ZDB_IP6_INDEX]
             ns = zdb["namespace"]
             file.write("[[groups.backends]]\n")
             file.write(f'address = "[{ip}]:9900"\n')
             file.write(f'namespace = "{ns}"\n')
-            file.write(f'password = "{ZDB_PW}"\n\n')
+            file.write(f'password = "{args['zdb_pw']}"\n\n')
 
     # ssh_ip = vm["mycelium_ip"]
     ssh_ip = vm["computed_ip6"].split("/")[0]
@@ -150,7 +168,9 @@ def post_deploy(args):
 
 
 pulumi.Output.all(
-    *[(d.vms_computed, d.zdbs_computed) for d in deployments.values()]
+    deployments=[(d.vms_computed, d.zdbs_computed) for d in deployments.values()],
+    zstor_key=zstor_key.hex,
+    zdb_pw=zdb_pw.result,
 ).apply(post_deploy)
 
 vm = deployments[VM_NODE].vms_computed[0]
@@ -158,6 +178,9 @@ pulumi.export("mycelium_ip", vm.mycelium_ip)
 pulumi.export("pub_ipv6", vm.computed_ip6)
 
 SCRIPT = """
+# Primitive idempotency
+zinit | grep -q zstor && exit
+
 # Grab binaries and hook script. Make sure that all are executable
 wget -O /usr/local/bin/zdbfs https://github.com/threefoldtech/0-db-fs/releases/download/v0.1.11/zdbfs-0.1.11-amd64-linux-static
 wget -O /usr/local/bin/zdb https://github.com/threefoldtech/0-db/releases/download/v2.0.8/zdb-2.0.8-linux-amd64-static
