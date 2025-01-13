@@ -19,7 +19,9 @@ def generate_ansible_inventory(vms):
     )
 
 
-with open(os.path.expanduser("~/.ssh/id_rsa.pub")) as file:
+from vars import SSH_KEY_PATH
+
+with open(os.path.expanduser(SSH_KEY_PATH)) as file:
     SSH_KEY = file.read()
 
 NET_NAME = "net"
