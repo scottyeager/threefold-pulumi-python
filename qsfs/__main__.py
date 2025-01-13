@@ -42,6 +42,11 @@ ZDB_PW = secrets.token_urlsafe(32)
 zstor_key = pulumi_random.RandomBytes("zstor_key", length=32)
 zdb_pw = pulumi_random.RandomPassword("zdb_pw", length=20)
 
+if vars.ZDB_CONNECTION == "ipv6":
+    ZDB_INDEX = ZDB_IP6_INDEX
+elif vars.ZDB_CONNECTION == "mycelium":
+    ZDB_INDEX = ZDB_MYC_INDEX
+
 provider = threefold.Provider("provider", mnemonic=MNEMONIC, network=NETWORK)
 
 network = threefold.Network(
@@ -144,7 +149,7 @@ def post_deploy(args):
         """
         file.write(textwrap.dedent(encryption_config))
         for zdb in meta_zdbs:
-            ip = zdb["ips"][ZDB_IP6_INDEX]
+            ip = zdb["ips"][ZDB_INDEX]
             ns = zdb["namespace"]
             file.write("[[meta.config.backends]]\n")
             file.write(f'address = "[{ip}]:9900"\n')
@@ -153,7 +158,7 @@ def post_deploy(args):
 
         file.write("[[groups]]\n")
         for zdb in data_zdbs:
-            ip = zdb["ips"][ZDB_IP6_INDEX]
+            ip = zdb["ips"][ZDB_INDEX]
             ns = zdb["namespace"]
             file.write("[[groups.backends]]\n")
             file.write(f'address = "[{ip}]:9900"\n')

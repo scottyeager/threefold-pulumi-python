@@ -30,6 +30,6 @@ def scp(ip, source, destination):
                 source,
                 f"root@[{ip}]:{destination}",
             ],
-            stdout=logfile,
-            stderr=logfile,
+            # stdout=logfile,
+            # stderr=logfile,
         )
