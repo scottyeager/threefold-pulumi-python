@@ -1,0 +1,11 @@
+MNEMONIC = "your words here"
+NETWORK = "test"
+
+# Node IDs to deploy VMs on
+NODE_IDS = [1, 2, 3]
+
+# VM specifications
+FLIST = "https://hub.grid.tf/tf-official-vms/ubuntu-24.04-latest.flist"
+CPU = 1
+RAM = 2048  # MB
+ROOTFS = 1024 * 15  # MB
