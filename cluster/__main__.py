@@ -1,7 +1,7 @@
 import os
 import pulumi
 import pulumi_threefold as threefold
-from vars import MNEMONIC, NETWORK, NODE_IDS, FLIST, CPU, RAM, ROOTFS
+from vars import MNEMONIC, NETWORK, NODE_IDS, FLIST, CPU, RAM, ROOTFS, SSH_KEY_PATH
 
 
 def generate_ansible_inventory(vms):
@@ -11,15 +11,14 @@ def generate_ansible_inventory(vms):
         ip.apply(lambda ip, node=node: f"node{node} ansible_host={ip.split('/')[0]}\n")
         for node, ip in vms.items()
     ]
-    
+
     # Combine all node lines with the header and vars
     return pulumi.Output.all(*node_lines).apply(
-        lambda lines: "[cluster]\n" + "".join(lines) + 
-        "\n[cluster:vars]\nansible_connection=ssh\nansible_user=root\n"
+        lambda lines: "[cluster]\n"
+        + "".join(lines)
+        + "\n[cluster:vars]\nansible_connection=ssh\nansible_user=root\n"
     )
 
-
-from vars import SSH_KEY_PATH
 
 with open(os.path.expanduser(SSH_KEY_PATH)) as file:
     SSH_KEY = file.read()
@@ -78,8 +77,6 @@ for node in NODE_IDS:
 # Generate and write ansible inventory
 inventory_content = generate_ansible_inventory(vm_ips)
 inventory_path = os.path.join(os.getcwd(), "inventory.ini")
-inventory_content.apply(lambda content: 
-    open(inventory_path, "w").write(content)
-)
+inventory_content.apply(lambda content: open(inventory_path, "w").write(content))
 
 pulumi.export("ansible_inventory_path", inventory_path)
