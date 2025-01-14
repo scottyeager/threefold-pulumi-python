@@ -16,6 +16,7 @@ from vars import (
     RAM,
     ROOTFS,
     SSH_KEY_PATH,
+    WG_ACCESS,
 )
 
 INVENTORY_FILE = "inventory.ini"
@@ -61,6 +62,7 @@ network = threefold.Network(
     nodes=NODE_IDS,
     ip_range="10.1.0.0/16",
     mycelium=MYCELIUM,
+    add_wg_access=WG_ACCESS,
     opts=pulumi.ResourceOptions(provider=provider),
 )
 
@@ -103,6 +105,9 @@ for node in NODE_IDS:
     if IPV6:
         pulumi.export(f"node_{node}_pub_ipv6", vm.computed_ip6)
     pulumi.export(f"node_{node}_wireguard_ip", vm.ip)
+
+if WG_ACCESS:
+    pulumi.export("WireGuard Config", network.access_wg_config)
 
 # Generate and write ansible inventory
 pulumi.Output.all(*vms).apply(generate_ansible_inventory)

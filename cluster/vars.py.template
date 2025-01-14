@@ -10,6 +10,9 @@ IP_TYPE = "ipv6"
 # Node IDs to deploy VMs on
 NODE_IDS = [1, 2, 3]
 
+# Whether to add WireGuard access via a gateway
+WG_ACCESS = True
+
 # VM specifications
 FLIST = "https://hub.grid.tf/tf-official-vms/ubuntu-24.04-latest.flist"
 CPU = 1
