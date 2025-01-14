@@ -1,0 +1,87 @@
+---
+- name: Install and configure Prometheus and Node Exporter
+  hosts: all
+  become: yes
+  vars:
+    zinit_services_dir: /etc/zinit
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install Prometheus
+      apt:
+        name: prometheus
+        state: present
+
+    - name: Install Node Exporter
+      apt:
+        name: prometheus-node-exporter
+        state: present
+
+    - name: Ensure zinit services directory exists
+      file:
+        path: "{{ zinit_services_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Ensure scrape configs directory exists
+      file:
+        path: /etc/prometheus/scrape_configs
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create Prometheus configuration file
+      copy:
+        dest: /etc/prometheus/prometheus.yaml
+        content: |
+          global:
+            scrape_interval: 60s
+
+          remote_write:
+            - url: "{{ prometheus_remote_write_url }}"
+              basic_auth:
+                username: "{{ prometheus_remote_write_user }}"
+                password: "{{ prometheus_remote_write_password }}"
+
+          scrape_configs:
+            - job_name: 'node'
+              static_configs:
+                - targets: ["{{ inventory_hostname }}:9100"]
+
+          scrape_config_files:
+            - /etc/prometheus/scrape_configs/*.yaml
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Create zinit service file for prometheus
+      copy:
+        dest: "{{ zinit_services_dir }}/prometheus.yaml"
+        content: |
+          exec: /usr/bin/prometheus
+            --config.file=/etc/prometheus/prometheus.yaml
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Create zinit service file for node-exporter
+      copy:
+        dest: "{{ zinit_services_dir }}/node-exporter.yaml"
+        content: |
+          exec: /usr/bin/prometheus-node-exporter
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Start prometheus service with zinit
+      command: zinit monitor prometheus
+      changed_when: false
+
+    - name: Start node-exporter service with zinit
+      command: zinit monitor node-exporter
+      changed_when: false

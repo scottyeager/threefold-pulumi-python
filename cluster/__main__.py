@@ -1,9 +1,11 @@
 import os
+import textwrap
 
 import pulumi
 import pulumi_threefold as threefold
 
 from vars import (
+    CLUSTER_NAME,
     CPU,
     FLIST,
     IP_TYPE,
@@ -19,7 +21,7 @@ from vars import (
     WG_ACCESS,
 )
 
-INVENTORY_FILE = "inventory.ini"
+INVENTORY_FILE = "ansible/inventory.ini"
 
 
 def generate_ansible_inventory(vms):
@@ -28,24 +30,27 @@ def generate_ansible_inventory(vms):
     node_lines = []
     for node, vm in vms:
         if IP_TYPE == "ipv6":
-            line = f"node{node} ansible_host={vm["computed_ip6"].split('/')[0]} service_host={vm["ip"]}\n"
+            line = f"{vm_names[node]} ansible_host={vm["computed_ip6"].split('/')[0]} service_host={vm["ip"]}\n"
 
         else:  # wireguard
-            line = f"node{node} ansible_host={vm["ip"]} service_host={vm["ip"]}\n"
+            line = f"{vm_names[node]} ansible_host={vm["ip"]} service_host={vm["ip"]}\n"
         node_lines.append(line)
 
-        # Combine all node lines with the header and vars
-        inventory_content = (
-            "[cluster]\n"
-            + "".join(node_lines)
-            + "\n[cluster:vars]\nansible_connection=ssh\nansible_user=root\n"
-        )
+    inventory_content = "".join(node_lines) + textwrap.dedent("""
+        [all:vars]
+        ansible_connection=ssh
+        ansible_user=root
 
-        inventory_path = os.path.join(os.getcwd(), INVENTORY_FILE)
-        with open(inventory_path, "w") as file:
-            file.write(inventory_content)
+        prometheus_remote_write_url="https://your-remote-write-endpoint"
+        prometheus_remote_write_user="your-username"
+        prometheus_remote_write_password="your-password"
+        """)
 
-        pulumi.export("ansible_inventory_path", inventory_path)
+    inventory_path = os.path.join(os.getcwd(), INVENTORY_FILE)
+    with open(inventory_path, "w") as file:
+        file.write(inventory_content)
+
+    pulumi.export("ansible_inventory_path", inventory_path)
 
 
 with open(os.path.expanduser(SSH_KEY_PATH)) as file:
@@ -68,7 +73,13 @@ network = threefold.Network(
 
 deployments = {}
 
-for node in NODE_IDS:
+vm_names = {}
+for i, node in enumerate(NODE_IDS, 1):
+    if CLUSTER_NAME != "":
+        vm_name = f"{CLUSTER_NAME}_node{i}"
+    else:
+        vm_name = f"node{i}"
+    vm_names[node] = vm_name
     deployments[node] = threefold.Deployment(
         f"deployment-{node}",
         node_id=node,
@@ -76,7 +87,7 @@ for node in NODE_IDS:
         network_name=NET_NAME,
         vms=[
             threefold.VMInputArgs(
-                name=f"vm{node}",
+                name=vm_name,
                 node_id=node,
                 flist=FLIST,
                 entrypoint="/sbin/zinit init",
