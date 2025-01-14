@@ -1,31 +1,50 @@
 import os
+
 import pulumi
 import pulumi_threefold as threefold
-from vars import MNEMONIC, NETWORK, NODE_IDS, FLIST, CPU, RAM, ROOTFS, SSH_KEY_PATH, IP_TYPE
+
+from vars import (
+    CPU,
+    FLIST,
+    IP_TYPE,
+    IPV6,
+    MNEMONIC,
+    MYCELIUM,
+    NETWORK,
+    NODE_IDS,
+    PLANETARY,
+    RAM,
+    ROOTFS,
+    SSH_KEY_PATH,
+)
+
+INVENTORY_FILE = "inventory.ini"
 
 
-def generate_ansible_inventory(vms, ip_type):
+def generate_ansible_inventory(vms):
     """Generate ansible inventory content from VM IPs"""
     # Create a list of Outputs for each node line
     node_lines = []
-    for node, (ip6, ip) in vms.items():
-        if ip_type == "ipv6":
-            line = ip6.apply(lambda ip6, ip=ip, node=node: 
-                f"node{node} ansible_host={ip6.split('/')[0]}\n"
-                f"node{node}_service_hostname={ip.split('/')[0]}\n"
-            )
+    for node, vm in vms:
+        if IP_TYPE == "ipv6":
+            line = f"node{node} ansible_host={vm["computed_ip6"].split('/')[0]} service_host={vm["ip"]}\n"
+
         else:  # wireguard
-            line = ip.apply(lambda ip, node=node: 
-                f"node{node} ansible_host={ip.split('/')[0]}\n"
-            )
+            line = f"node{node} ansible_host={vm["ip"]}\n"
         node_lines.append(line)
 
-    # Combine all node lines with the header and vars
-    return pulumi.Output.all(*node_lines).apply(
-        lambda lines: "[cluster]\n"
-        + "".join(lines)
-        + "\n[cluster:vars]\nansible_connection=ssh\nansible_user=root\n"
-    )
+        # Combine all node lines with the header and vars
+        inventory_content = (
+            "[cluster]\n"
+            + "".join(node_lines)
+            + "\n[cluster:vars]\nansible_connection=ssh\nansible_user=root\n"
+        )
+
+        inventory_path = os.path.join(os.getcwd(), INVENTORY_FILE)
+        with open(inventory_path, "w") as file:
+            file.write(inventory_content)
+
+        pulumi.export("ansible_inventory_path", inventory_path)
 
 
 with open(os.path.expanduser(SSH_KEY_PATH)) as file:
@@ -41,7 +60,7 @@ network = threefold.Network(
     description="network",
     nodes=NODE_IDS,
     ip_range="10.1.0.0/16",
-    mycelium=True,
+    mycelium=MYCELIUM,
     opts=pulumi.ResourceOptions(provider=provider),
 )
 
@@ -63,9 +82,9 @@ for node in NODE_IDS:
                 cpu=CPU,
                 memory=RAM,
                 rootfs_size=ROOTFS,
-                mycelium=True,
-                planetary=True,
-                public_ip6=True,
+                mycelium=MYCELIUM,
+                planetary=PLANETARY,
+                public_ip6=IPV6,
                 env_vars={
                     "SSH_KEY": SSH_KEY,
                 },
@@ -75,17 +94,15 @@ for node in NODE_IDS:
     )
 
 # Collect VM IPs and generate ansible inventory
-vm_ips = {}
+vms = []
 for node in NODE_IDS:
     vm = deployments[node].vms_computed[0]
-    vm_ips[node] = (vm.computed_ip6, vm.computed_ip)
-    pulumi.export(f"node_{node}_mycelium_ip", vm.mycelium_ip)
-    pulumi.export(f"node_{node}_pub_ipv6", vm.computed_ip6)
-    pulumi.export(f"node_{node}_wireguard_ip", vm.computed_ip)
+    vms.append((node, vm))
+    if MYCELIUM:
+        pulumi.export(f"node_{node}_mycelium_ip", vm.mycelium_ip)
+    if IPV6:
+        pulumi.export(f"node_{node}_pub_ipv6", vm.computed_ip6)
+    pulumi.export(f"node_{node}_wireguard_ip", vm.ip)
 
 # Generate and write ansible inventory
-inventory_content = generate_ansible_inventory(vm_ips, IP_TYPE)
-inventory_path = os.path.join(os.getcwd(), "inventory.ini")
-inventory_content.apply(lambda content: open(inventory_path, "w").write(content))
-
-pulumi.export("ansible_inventory_path", inventory_path)
+pulumi.Output.all(*vms).apply(generate_ansible_inventory)
