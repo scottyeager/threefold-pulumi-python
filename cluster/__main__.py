@@ -1,16 +1,24 @@
 import os
 import pulumi
 import pulumi_threefold as threefold
-from vars import MNEMONIC, NETWORK, NODE_IDS, FLIST, CPU, RAM, ROOTFS, SSH_KEY_PATH
+from vars import MNEMONIC, NETWORK, NODE_IDS, FLIST, CPU, RAM, ROOTFS, SSH_KEY_PATH, IP_TYPE
 
 
-def generate_ansible_inventory(vms):
+def generate_ansible_inventory(vms, ip_type):
     """Generate ansible inventory content from VM IPs"""
     # Create a list of Outputs for each node line
-    node_lines = [
-        ip.apply(lambda ip, node=node: f"node{node} ansible_host={ip.split('/')[0]}\n")
-        for node, ip in vms.items()
-    ]
+    node_lines = []
+    for node, (ip6, ip) in vms.items():
+        if ip_type == "ipv6":
+            line = ip6.apply(lambda ip6, ip=ip, node=node: 
+                f"node{node} ansible_host={ip6.split('/')[0]}\n"
+                f"node{node}_service_hostname={ip.split('/')[0]}\n"
+            )
+        else:  # wireguard
+            line = ip.apply(lambda ip, node=node: 
+                f"node{node} ansible_host={ip.split('/')[0]}\n"
+            )
+        node_lines.append(line)
 
     # Combine all node lines with the header and vars
     return pulumi.Output.all(*node_lines).apply(
@@ -70,12 +78,13 @@ for node in NODE_IDS:
 vm_ips = {}
 for node in NODE_IDS:
     vm = deployments[node].vms_computed[0]
-    vm_ips[node] = vm.computed_ip6
+    vm_ips[node] = (vm.computed_ip6, vm.computed_ip)
     pulumi.export(f"node_{node}_mycelium_ip", vm.mycelium_ip)
     pulumi.export(f"node_{node}_pub_ipv6", vm.computed_ip6)
+    pulumi.export(f"node_{node}_wireguard_ip", vm.computed_ip)
 
 # Generate and write ansible inventory
-inventory_content = generate_ansible_inventory(vm_ips)
+inventory_content = generate_ansible_inventory(vm_ips, IP_TYPE)
 inventory_path = os.path.join(os.getcwd(), "inventory.ini")
 inventory_content.apply(lambda content: open(inventory_path, "w").write(content))
 

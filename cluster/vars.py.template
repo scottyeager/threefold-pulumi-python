@@ -4,6 +4,9 @@ NETWORK = "test"
 # Path to SSH public key
 SSH_KEY_PATH = "~/.ssh/id_rsa.pub"
 
+# IP type to use in ansible inventory for SSH (ipv6 or wireguard)
+IP_TYPE = "ipv6"
+
 # Node IDs to deploy VMs on
 NODE_IDS = [1, 2, 3]
 
