@@ -30,7 +30,7 @@ def generate_ansible_inventory(vms):
             line = f"node{node} ansible_host={vm["computed_ip6"].split('/')[0]} service_host={vm["ip"]}\n"
 
         else:  # wireguard
-            line = f"node{node} ansible_host={vm["ip"]}\n"
+            line = f"node{node} ansible_host={vm["ip"]} service_host={vm["ip"]}\n"
         node_lines.append(line)
 
         # Combine all node lines with the header and vars
