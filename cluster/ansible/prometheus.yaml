@@ -80,8 +80,20 @@
 
     - name: Start prometheus service with zinit
       command: zinit monitor prometheus
-      changed_when: false
+      register: monitor_result_prometheus
+      ignore_errors: yes
+      changed_when: monitor_result.rc == 0
 
     - name: Start node-exporter service with zinit
       command: zinit monitor node-exporter
-      changed_when: false
+      register: monitor_result_node_exporter
+      ignore_errors: yes
+      changed_when: monitor_result.rc == 0
+
+    - name: Restart service if it's already monitored
+      command: zinit stop prometheus && zinit start prometheus
+      when: monitor_result_prometheus.rc != 0
+
+    - name: Restart service if it's already monitored
+      command: zinit stop node-exporter && zinit start node-exporter
+      when: monitor_result_node_exporter.rc != 0
