@@ -78,22 +78,14 @@
         group: root
         mode: "0644"
 
-    - name: Start prometheus service with zinit
-      command: zinit monitor prometheus
-      register: monitor_result_prometheus
-      ignore_errors: yes
-      changed_when: monitor_result.rc == 0
+    # This starts or restarts as needed, so works for updates
+    - name: Restart prometheus
+      local.zinit.service:
+        name: prometheus
+        state: restarted
 
-    - name: Start node-exporter service with zinit
-      command: zinit monitor node-exporter
-      register: monitor_result_node_exporter
-      ignore_errors: yes
-      changed_when: monitor_result.rc == 0
-
-    - name: Restart service if it's already monitored
-      command: zinit stop prometheus && zinit start prometheus
-      when: monitor_result_prometheus.rc != 0
-
-    - name: Restart service if it's already monitored
-      command: zinit stop node-exporter && zinit start node-exporter
-      when: monitor_result_node_exporter.rc != 0
+    # This starts or restarts as needed, so works for updates
+    - name: Restart node exporter
+      local.zinit.service:
+        name: node-exporter
+        state: restarted
