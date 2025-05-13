@@ -11,7 +11,6 @@ from vars import (
     IP_TYPE,
     IPV6,
     MNEMONIC,
-    MYCELIUM,
     NETWORK,
     NODE_IDS,
     PLANETARY,
@@ -21,6 +20,9 @@ from vars import (
     WG_ACCESS,
 )
 
+# Due to $ISSUE, we only use one relay right now, though the default is still to set two
+# This should be unnecessary at some point (and even harmful if we have multiple relays working again)
+RELAY_URL = ["wss://relay.grid.tf"]
 INVENTORY_FILE = "ansible/inventory.ini"
 
 
@@ -36,7 +38,8 @@ def generate_ansible_inventory(vms):
             line = f"{vm_names[node]} ansible_host={vm["ip"]} service_host={vm["ip"]}\n"
         node_lines.append(line)
 
-    inventory_content = "".join(node_lines) + textwrap.dedent("""
+    inventory_content = "".join(node_lines) + textwrap.dedent(
+        """
         [all:vars]
         ansible_connection=ssh
         ansible_user=root
@@ -44,7 +47,8 @@ def generate_ansible_inventory(vms):
         prometheus_remote_write_url="https://your-remote-write-endpoint"
         prometheus_remote_write_user="your-username"
         prometheus_remote_write_password="your-password"
-        """)
+        """
+    )
 
     inventory_path = os.path.join(os.getcwd(), INVENTORY_FILE)
     with open(inventory_path, "w") as file:
@@ -58,7 +62,9 @@ with open(os.path.expanduser(SSH_KEY_PATH)) as file:
 
 NET_NAME = "net"
 
-provider = threefold.Provider("provider", mnemonic=MNEMONIC, network=NETWORK)
+provider = threefold.Provider(
+    "provider", mnemonic=MNEMONIC, network=NETWORK, relay_url=RELAY_URL
+)
 
 network = threefold.Network(
     "network",
@@ -66,7 +72,6 @@ network = threefold.Network(
     description="network",
     nodes=NODE_IDS,
     ip_range="10.1.0.0/16",
-    mycelium=MYCELIUM,
     add_wg_access=WG_ACCESS,
     opts=pulumi.ResourceOptions(provider=provider),
 )
@@ -95,7 +100,6 @@ for i, node in enumerate(NODE_IDS, 1):
                 cpu=CPU,
                 memory=RAM,
                 rootfs_size=ROOTFS,
-                mycelium=MYCELIUM,
                 planetary=PLANETARY,
                 public_ip6=IPV6,
                 env_vars={
@@ -111,8 +115,6 @@ vms = []
 for node in NODE_IDS:
     vm = deployments[node].vms_computed[0]
     vms.append((node, vm))
-    if MYCELIUM:
-        pulumi.export(f"node_{node}_mycelium_ip", vm.mycelium_ip)
     if IPV6:
         pulumi.export(f"node_{node}_pub_ipv6", vm.computed_ip6)
     pulumi.export(f"node_{node}_wireguard_ip", vm.ip)
