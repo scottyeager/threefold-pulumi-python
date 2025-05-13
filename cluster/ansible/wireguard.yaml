@@ -4,9 +4,9 @@
   become: yes
   vars:
     wireguard_interface: wg0
-    wireguard_port: 51820
-    wireguard_network: 192.168.2.0/24
-    wireguard_keepalive: 25
+    wireguard_port: "{{ wireguard_port }}"
+    wireguard_network: "{{ wireguard_network }}"
+    wireguard_keepalive: "{{ wireguard_keepalive }}"
   tasks:
     - name: Install Wireguard packages
       apt:

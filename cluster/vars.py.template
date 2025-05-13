@@ -18,6 +18,11 @@ NODE_IDS = [1, 2, 3]
 # Whether to add WireGuard access via a gateway
 WG_ACCESS = True
 
+# Wireguard network configuration
+WG_NETWORK = "192.168.2.0/24"
+WG_PORT = 51820
+WG_KEEPALIVE = 25
+
 # VM specifications
 FLIST = "https://hub.grid.tf/tf-official-vms/ubuntu-24.04-latest.flist"
 CPU = 1
