@@ -18,6 +18,9 @@ from vars import (
     ROOTFS,
     SSH_KEY_PATH,
     WG_ACCESS,
+    WG_NETWORK,
+    WG_PORT,
+    WG_KEEPALIVE,
 )
 
 # Due to $ISSUE, we only use one relay right now, though the default is still to set two
