@@ -38,11 +38,20 @@ def generate_ansible_inventory(vms):
             line = f"{vm_names[node]} ansible_host={vm["ip"]} service_host={vm["ip"]}\n"
         node_lines.append(line)
 
-    inventory_content = "".join(node_lines) + textwrap.dedent(
+    # Assign Wireguard IPs sequentially starting from .1
+    wireguard_ips = [f"192.168.2.{i+1}" for i in range(len(vms))]
+    
+    inventory_content = "".join([
+        f"{vm_names[node]} ansible_host={vm['computed_ip6'].split('/')[0] if IP_TYPE == 'ipv6' else vm['ip']} "
+        f"service_host={vm['ip']} wireguard_ip={wireguard_ips[i]}\n"
+        for i, (node, vm) in enumerate(vms)
+    ]) + textwrap.dedent(
         """
         [all:vars]
         ansible_connection=ssh
         ansible_user=root
+        wireguard_port=51820
+        wireguard_keepalive=25
 
         prometheus_remote_write_url="https://your-remote-write-endpoint"
         prometheus_remote_write_user="your-username"

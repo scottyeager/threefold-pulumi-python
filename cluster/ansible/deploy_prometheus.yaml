@@ -1,10 +1,12 @@
 ---
-- name: Install and configure Prometheus and Node Exporter
+- name: Install and configure cluster services
   hosts: all
   become: yes
   vars:
     zinit_services_dir: /etc/zinit
   tasks:
+    - name: Include Wireguard setup
+      include_tasks: wireguard.yaml
     - name: Update apt cache
       apt:
         update_cache: yes

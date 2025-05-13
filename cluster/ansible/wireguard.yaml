@@ -1,0 +1,83 @@
+---
+- name: Install and configure Wireguard
+  hosts: all
+  become: yes
+  vars:
+    wireguard_interface: wg0
+    wireguard_port: 51820
+    wireguard_network: 192.168.2.0/24
+    wireguard_keepalive: 25
+  tasks:
+    - name: Install Wireguard packages
+      apt:
+        name:
+          - wireguard
+          - wireguard-tools
+          - iproute2
+          - iputils-ping
+        state: present
+        update_cache: yes
+
+    - name: Create Wireguard directory
+      file:
+        path: /etc/wireguard
+        state: directory
+        mode: 0700
+
+    - name: Generate private key if not exists
+      command: wg genkey
+      register: private_key
+      changed_when: false
+      args:
+        creates: /etc/wireguard/privatekey
+
+    - name: Save private key
+      copy:
+        dest: /etc/wireguard/privatekey
+        content: "{{ private_key.stdout }}"
+        mode: 0600
+
+    - name: Generate public key
+      command: wg pubkey < /etc/wireguard/privatekey
+      register: public_key
+      changed_when: false
+      args:
+        creates: /etc/wireguard/publickey
+
+    - name: Save public key
+      copy:
+        dest: /etc/wireguard/publickey
+        content: "{{ public_key.stdout }}"
+        mode: 0644
+
+    - name: Create Wireguard interface
+      command: |
+        ip link add dev {{ wireguard_interface }} type wireguard
+        ip address add dev {{ wireguard_interface }} {{ hostvars[inventory_hostname]['wireguard_ip'] }}/24
+        wg set {{ wireguard_interface }} private-key /etc/wireguard/privatekey
+        ip link set up dev {{ wireguard_interface }}
+      args:
+        creates: /sys/class/net/{{ wireguard_interface }}
+
+    - name: Configure Wireguard peers
+      command: |
+        wg set {{ wireguard_interface }} peer {{ hostvars[item]['public_key'] }} \
+        allowed-ips {{ hostvars[item]['wireguard_ip'] }} \
+        endpoint [{{ hostvars[item]['ansible_host'] }}]:{{ wireguard_port }} \
+        persistent-keepalive {{ wireguard_keepalive }}
+      loop: "{{ groups['all'] }}"
+      when: inventory_hostname != item
+
+    - name: Create zinit service for Wireguard
+      copy:
+        dest: /etc/zinit/wireguard.yaml
+        content: |
+          exec: /usr/bin/wg-quick up {{ wireguard_interface }}
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Restart Wireguard service
+      local.zinit.service:
+        name: wireguard
+        state: restarted
