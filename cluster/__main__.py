@@ -17,7 +17,6 @@ from vars import (
     RAM,
     ROOTFS,
     SSH_KEY_PATH,
-    WG_ACCESS,
     WG_NETWORK,
     WG_PORT,
     WG_KEEPALIVE,
@@ -44,7 +43,7 @@ def generate_ansible_inventory(vms):
     # Get network prefix and assign Wireguard IPs sequentially starting from .1
     network_prefix = WG_NETWORK.split('.')[:3]
     wireguard_ips = [f"{'.'.join(network_prefix)}.{i+1}" for i in range(len(vms))]
-    
+
     inventory_content = "".join([
         f"{vm_names[node]} ansible_host={vm['computed_ip6'].split('/')[0] if IP_TYPE == 'ipv6' else vm['ip']} "
         f"service_host={vm['ip']} wireguard_ip={wireguard_ips[i]}\n"
@@ -79,16 +78,7 @@ provider = threefold.Provider(
     "provider", mnemonic=MNEMONIC, network=NETWORK, relay_url=RELAY_URL
 )
 
-network = threefold.Network(
-    "network",
-    name=NET_NAME,
-    description="network",
-    nodes=NODE_IDS,
-    ip_range="10.1.0.0/16",
-    add_wg_access=WG_ACCESS,
-    opts=pulumi.ResourceOptions(provider=provider),
-)
-
+networks = {}
 deployments = {}
 
 vm_names = {}
@@ -98,18 +88,29 @@ for i, node in enumerate(NODE_IDS, 1):
     else:
         vm_name = f"node{i}"
     vm_names[node] = vm_name
+
+    network_name = f"net{node}"
+    networks[node] = threefold.Network(
+        f"network-{node}",
+        name=network_name,
+        description=f"network for node {node}",
+        nodes=[node],
+        ip_range="10.1.0.0/16",
+        opts=pulumi.ResourceOptions(provider=provider),
+    )
+
     deployments[node] = threefold.Deployment(
         f"deployment-{node}",
         node_id=node,
         name=f"node{node}",
-        network_name=NET_NAME,
+        network_name=network_name,
         vms=[
             threefold.VMInputArgs(
                 name=vm_name,
                 node_id=node,
                 flist=FLIST,
                 entrypoint="/sbin/zinit init",
-                network_name=NET_NAME,
+                network_name=network_name,
                 cpu=CPU,
                 memory=RAM,
                 rootfs_size=ROOTFS,
@@ -120,7 +121,7 @@ for i, node in enumerate(NODE_IDS, 1):
                 },
             )
         ],
-        opts=pulumi.ResourceOptions(provider=provider, depends_on=[network]),
+        opts=pulumi.ResourceOptions(provider=provider, depends_on=[networks[node]]),
     )
 
 # Collect VM IPs and generate ansible inventory
