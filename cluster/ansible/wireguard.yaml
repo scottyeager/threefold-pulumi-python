@@ -25,30 +25,35 @@
         mode: 0700
 
     - name: Generate private key if not exists
-      command: wg genkey
-      register: private_key
-      changed_when: false
+      ansible.builtin.command: wg genkey > /etc/wireguard/privatekey
       args:
         creates: /etc/wireguard/privatekey
+      changed_when: false # The command itself is idempotent due to creates
 
-    - name: Save private key
-      copy:
-        dest: /etc/wireguard/privatekey
-        content: "{{ private_key.stdout }}"
+    - name: Set permissions for private key
+      ansible.builtin.file:
+        path: /etc/wireguard/privatekey
         mode: 0600
 
-    - name: Generate public key
-      shell: wg pubkey < /etc/wireguard/privatekey
-      register: public_key
-      changed_when: false
+    - name: Generate public key from private key
+      ansible.builtin.shell: wg pubkey < /etc/wireguard/privatekey > /etc/wireguard/publickey
       args:
         creates: /etc/wireguard/publickey
+      changed_when: false
 
-    - name: Save public key
-      copy:
-        dest: /etc/wireguard/publickey
-        content: "{{ public_key.stdout }}"
+    - name: Set permissions for public key
+      ansible.builtin.file:
+        path: /etc/wireguard/publickey
         mode: 0644
+
+    - name: Read public key content
+      ansible.builtin.slurp:
+        src: /etc/wireguard/publickey
+      register: wg_public_key_file
+
+    - name: Set public key as a fact
+      ansible.builtin.set_fact:
+        wg_public_key: "{{ wg_public_key_file.content | b64decode | trim }}" # trim removes trailing newline
 
     - name: Create Wireguard interface
       command: |
