@@ -38,7 +38,7 @@
         mode: 0600
 
     - name: Generate public key
-      command: wg pubkey < /etc/wireguard/privatekey
+      shell: wg pubkey < /etc/wireguard/privatekey
       register: public_key
       changed_when: false
       args:
