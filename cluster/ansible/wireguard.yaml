@@ -4,15 +4,13 @@
   become: yes
   vars:
     wireguard_interface: wg0
-    wireguard_port: "{{ wireguard_port }}"
-    wireguard_network: "{{ wireguard_network }}"
-    wireguard_keepalive: "{{ wireguard_keepalive }}"
   tasks:
     - name: Install Wireguard packages
       apt:
         name:
           - wireguard
           - wireguard-tools
+          - wireguard-go
           - iproute2
           - iputils-ping
         state: present
@@ -25,7 +23,7 @@
         mode: 0700
 
     - name: Generate private key if not exists
-      ansible.builtin.command: wg genkey > /etc/wireguard/privatekey
+      ansible.builtin.shell: wg genkey > /etc/wireguard/privatekey
       args:
         creates: /etc/wireguard/privatekey
       changed_when: false # The command itself is idempotent due to creates
@@ -55,26 +53,8 @@
       ansible.builtin.set_fact:
         wg_public_key: "{{ wg_public_key_file.content | b64decode | trim }}" # trim removes trailing newline
 
-    - name: Create Wireguard interface
-      command: |
-        ip link add dev {{ wireguard_interface }} type wireguard
-        ip address add dev {{ wireguard_interface }} {{ hostvars[inventory_hostname]['wireguard_ip'] }}/24
-        wg set {{ wireguard_interface }} private-key /etc/wireguard/privatekey
-        ip link set up dev {{ wireguard_interface }}
-      args:
-        creates: /sys/class/net/{{ wireguard_interface }}
-
-    - name: Configure Wireguard peers
-      command: |
-        wg set {{ wireguard_interface }} peer {{ hostvars[item]['public_key'] }} \
-        allowed-ips {{ hostvars[item]['wireguard_ip'] }} \
-        endpoint [{{ hostvars[item]['ansible_host'] }}]:{{ wireguard_port }} \
-        persistent-keepalive {{ wireguard_keepalive }}
-      loop: "{{ groups['all'] }}"
-      when: inventory_hostname != item
-
     - name: Create zinit service for Wireguard
-      copy:
+      ansible.builtin.copy:
         dest: /etc/zinit/wireguard.yaml
         content: |
           exec: /usr/bin/wg-quick up {{ wireguard_interface }}
@@ -82,7 +62,16 @@
         group: root
         mode: 0644
 
-    - name: Restart Wireguard service
+    - name: Start Wireguard service
       local.zinit.service:
         name: wireguard
         state: restarted
+
+    - name: Read private key content
+      ansible.builtin.slurp:
+        src: /etc/wireguard/privatekey
+      register: wg_private_key_file
+
+    - name: Set private key as a fact
+      ansible.builtin.set_fact:
+        wg_private_key: "{{ wg_private_key_file.content | b64decode | trim }}" # trim removes trailing newline

@@ -5,12 +5,6 @@
   vars:
     zinit_services_dir: /etc/zinit
   tasks:
-    - name: Include Wireguard setup
-      include_tasks: wireguard.yaml
-    - name: Update apt cache
-      apt:
-        update_cache: yes
-
     - name: Install Prometheus
       apt:
         name: prometheus
