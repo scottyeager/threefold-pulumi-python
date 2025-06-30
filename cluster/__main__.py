@@ -9,7 +9,6 @@ from vars import (
     CPU,
     FLIST,
     IP_TYPE,
-    IPV6,
     MNEMONIC,
     MYCELIUM,
     NETWORK,
@@ -22,6 +21,9 @@ from vars import (
     WG_PORT,
     WG_KEEPALIVE,
 )
+
+if MNEMONIC is None:
+    MNEMONIC = os.getenv("MNEMONIC")
 
 # Due to $ISSUE, we only use one relay right now, though the default is still to set two
 # This should be unnecessary at some point (and even harmful if we have multiple relays working again)
@@ -38,15 +40,18 @@ def generate_ansible_inventory(vms):
     # Create a list of Outputs for each node line
     node_lines = []
     for i, (node, vm) in enumerate(vms):
+        ipv6_address = vm["computed_ip6"].split('/')[0]
         if IP_TYPE == "ipv6":
-            line = f"{vm_names[node]} ansible_host={vm["computed_ip6"].split('/')[0]} wireguard_ip={wireguard_ips[i]}\n"
+            ansible_host = ipv6_address
 
         elif IP_TYPE == "mycelium":
-            line = f"{vm_names[node]} ansible_host={vm["mycelium_ip"]} wireguard_ip={wireguard_ips[i]}\n"
+            ansible_host= vm["mycelium_ip"]
 
         else:
             raise ValueError("IP_TYPE for SSH must be ipv6 or mycelium")
-        node_lines.append(line)
+
+        node_lines.append(f"{vm_names[node]} ansible_host={ansible_host} wireguard_ip={wireguard_ips[i]} ipv6_address={ipv6_address}\n")
+
 
 
     inventory_content = "\n".join(node_lines) + textwrap.dedent(
@@ -73,8 +78,6 @@ def generate_ansible_inventory(vms):
 with open(os.path.expanduser(SSH_KEY_PATH)) as file:
     SSH_KEY = file.read()
 
-NET_NAME = "net"
-
 provider = threefold.Provider(
     "provider", mnemonic=MNEMONIC, network=NETWORK, relay_url=RELAY_URL
 )
@@ -90,9 +93,9 @@ for i, node in enumerate(NODE_IDS, 1):
         vm_name = f"node{i}"
     vm_names[node] = vm_name
 
-    network_name = f"net{node}"
+    network_name = f"{CLUSTER_NAME}_net{node}"
     networks[node] = threefold.Network(
-        f"network-{node}",
+        network_name,
         name=network_name,
         description=f"network for node {node}",
         nodes=[node],
@@ -118,7 +121,7 @@ for i, node in enumerate(NODE_IDS, 1):
                 rootfs_size=ROOTFS,
                 planetary=PLANETARY,
                 mycelium=MYCELIUM,
-                public_ip6=IPV6,
+                public_ip6=True,
                 env_vars={
                     "SSH_KEY": SSH_KEY,
                 },
@@ -132,8 +135,7 @@ vms = []
 for node in NODE_IDS:
     vm = deployments[node].vms_computed[0]
     vms.append((node, vm))
-    if IPV6:
-        pulumi.export(f"node_{node}_pub_ipv6", vm.computed_ip6)
+    pulumi.export(f"node_{node}_pub_ipv6", vm.computed_ip6)
     if MYCELIUM:
         pulumi.export(f"node_{node}_mycelium_ip", vm.mycelium_ip)
 

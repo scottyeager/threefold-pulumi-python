@@ -53,11 +53,36 @@
       ansible.builtin.set_fact:
         wg_public_key: "{{ wg_public_key_file.content | b64decode | trim }}" # trim removes trailing newline
 
+    - name: Create Wireguard startup script for zinit
+      ansible.builtin.copy:
+        dest: /start-wg.sh
+        content: |
+          #/bin/bash
+          pkill wireguard-go
+          wireguard-go wg0
+          ip address add dev {{ wireguard_interface }} {{ hostvars[inventory_hostname]['wireguard_ip'] }}/24
+          wg set {{ wireguard_interface }} private-key /etc/wireguard/privatekey listen-port {{ wireguard_port }}
+          ip link set up dev {{ wireguard_interface }}
+
+          {% for peer in groups['all'] %}
+          {% if peer != inventory_hostname %}
+          wg set {{ wireguard_interface }} peer {{ hostvars[peer]['wg_public_key'] }} \
+          allowed-ips {{ hostvars[peer]['wireguard_ip'] }} \
+          endpoint [{{ hostvars[peer]['ipv6_address'] }}]:{{ wireguard_port }} \
+          persistent-keepalive {{ wireguard_keepalive }}
+          {% endif %}
+          {% endfor %}
+        owner: root
+        group: root
+        mode: 0744
+
     - name: Create zinit service for Wireguard
       ansible.builtin.copy:
         dest: /etc/zinit/wireguard.yaml
         content: |
-          exec: /usr/bin/wg-quick up {{ wireguard_interface }}
+          exec: bash /start-wg.sh
+          oneshot: true
+          test: pgrep wireguard-go
         owner: root
         group: root
         mode: 0644
@@ -66,12 +91,3 @@
       local.zinit.service:
         name: wireguard
         state: restarted
-
-    - name: Read private key content
-      ansible.builtin.slurp:
-        src: /etc/wireguard/privatekey
-      register: wg_private_key_file
-
-    - name: Set private key as a fact
-      ansible.builtin.set_fact:
-        wg_private_key: "{{ wg_private_key_file.content | b64decode | trim }}" # trim removes trailing newline
