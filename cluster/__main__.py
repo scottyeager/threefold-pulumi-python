@@ -34,28 +34,30 @@ INVENTORY_FILE = "ansible/inventory.ini"
 def generate_ansible_inventory(vms):
     """Generate ansible inventory content from VM IPs"""
     # Get network prefix and assign Wireguard IPs sequentially starting from .1
-    network_prefix = WG_NETWORK.split('.')[:3]
+    network_prefix = WG_NETWORK.split(".")[:3]
     wireguard_ips = [f"{'.'.join(network_prefix)}.{i+1}" for i in range(len(vms))]
 
     # Create a list of Outputs for each node line
     node_lines = []
     for i, (node, vm) in enumerate(vms):
-        ipv6_address = vm["computed_ip6"].split('/')[0]
+        ipv6_address = vm["computed_ip6"].split("/")[0]
         if IP_TYPE == "ipv6":
             ansible_host = ipv6_address
 
         elif IP_TYPE == "mycelium":
-            ansible_host= vm["mycelium_ip"]
+            ansible_host = vm["mycelium_ip"]
 
         else:
             raise ValueError("IP_TYPE for SSH must be ipv6 or mycelium")
 
-        node_lines.append(f"{vm_names[node]} ansible_host={ansible_host} wireguard_ip={wireguard_ips[i]} ipv6_address={ipv6_address}\n")
+        node_lines.append(
+            f"{vm_names[node]} ansible_host={ansible_host} service_host={wireguard_ips[i]} wireguard_ip={wireguard_ips[i]} ipv6_address={ipv6_address}\n"
+        )
 
-
-
-    inventory_content = "\n".join(node_lines) + textwrap.dedent(
-        """
+    inventory_content = (
+        "\n".join(node_lines)
+        + textwrap.dedent(
+            """
         [all:vars]
         ansible_connection=ssh
         ansible_user=root
@@ -66,7 +68,8 @@ def generate_ansible_inventory(vms):
         prometheus_remote_write_user="your-username"
         prometheus_remote_write_password="your-password"
         """
-    ).format(WG_PORT=WG_PORT, WG_KEEPALIVE=WG_KEEPALIVE)
+        ).format(WG_PORT=WG_PORT, WG_KEEPALIVE=WG_KEEPALIVE)
+    )
 
     inventory_path = os.path.join(os.getcwd(), INVENTORY_FILE)
     with open(inventory_path, "w") as file:
